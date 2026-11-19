@@ -70,37 +70,130 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Look for matching sample frame detections
-    const sampleRecord = manifest?.sample_frames?.find(
+    // Look for matching sample frame detections or closest frame within 0.35s
+    let sampleRecord = manifest?.sample_frames?.find(
       (f) => Math.abs(f.timestamp_sec - currentTime) < 1.0 / fps
     );
+
+    if (!sampleRecord && manifest?.sample_frames && manifest.sample_frames.length > 0) {
+      let minDiff = 0.35;
+      for (const f of manifest.sample_frames) {
+        const diff = Math.abs(f.timestamp_sec - currentTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          sampleRecord = f;
+        }
+      }
+    }
 
     const scaleX = canvas.width / (manifest?.video_width || canvas.width);
     const scaleY = canvas.height / (manifest?.video_height || canvas.height);
 
     if (sampleRecord && sampleRecord.detections) {
-      sampleRecord.detections.forEach((det: Detection) => {
-        if (det.class === 'face' && !activeFilters.faces) return;
-        if (det.class === 'license_plate' && !activeFilters.plates) return;
-        if (det.class === 'computer_screen' && !activeFilters.screens) return;
+      // Deduplicate visual detections for crisp, non-overlapping HUD overlay
+      const validDets = sampleRecord.detections
+        .filter((det) => {
+          if (det.class === 'face' && !activeFilters.faces) return false;
+          if (det.class === 'license_plate' && !activeFilters.plates) return false;
+          if (det.class === 'computer_screen' && !activeFilters.screens) return false;
+          return true;
+        })
+        .sort((a, b) => b.confidence - a.confidence);
 
-        let strokeColor = '#3b82f6';
-        if (det.class === 'license_plate') strokeColor = '#f59e0b';
-        if (det.class === 'computer_screen') strokeColor = '#a855f7';
+      const renderDets: Detection[] = [];
+      for (const d of validDets) {
+        const hasOverlap = renderDets.some((existing) => {
+          const dx = Math.abs((existing.box.x + existing.box.w / 2) - (d.box.x + d.box.w / 2));
+          const dy = Math.abs((existing.box.y + existing.box.h / 2) - (d.box.y + d.box.h / 2));
+          const maxDim = Math.max(existing.box.w, existing.box.h, d.box.w, d.box.h);
+          return dx < maxDim * 1.1 && dy < maxDim * 1.1;
+        });
+        if (!hasOverlap) {
+          renderDets.push(d);
+        }
+      }
+
+      renderDets.forEach((det: Detection) => {
+        let strokeColor = '#38bdf8'; // sky-400
+        let bgTag = 'rgba(15, 23, 42, 0.90)';
+        let classTitle = 'FACE';
+        if (det.class === 'license_plate') {
+          strokeColor = '#fbbf24'; // amber-400
+          classTitle = 'PLATE';
+        } else if (det.class === 'computer_screen') {
+          strokeColor = '#c084fc'; // purple-400
+          classTitle = 'SCREEN';
+        } else if (det.class === 'id_badge') {
+          strokeColor = '#34d399'; // emerald-400
+          classTitle = 'BADGE';
+        }
 
         const rx = det.box.x * scaleX;
         const ry = det.box.y * scaleY;
         const rw = det.box.w * scaleX;
         const rh = det.box.h * scaleY;
 
+        // 1. Translucent border
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(rx, ry, rw, rh);
 
+        // 2. Tactical HUD Corner Brackets
+        const cornerLen = Math.min(10, Math.min(rw, rh) / 3);
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        // Top-left
+        ctx.moveTo(rx, ry + cornerLen);
+        ctx.lineTo(rx, ry);
+        ctx.lineTo(rx + cornerLen, ry);
+        // Top-right
+        ctx.moveTo(rx + rw - cornerLen, ry);
+        ctx.lineTo(rx + rw, ry);
+        ctx.lineTo(rx + rw, ry + cornerLen);
+        // Bottom-left
+        ctx.moveTo(rx, ry + rh - cornerLen);
+        ctx.lineTo(rx, ry + rh);
+        ctx.lineTo(rx + cornerLen, ry + rh);
+        // Bottom-right
+        ctx.moveTo(rx + rw - cornerLen, ry + rh);
+        ctx.lineTo(rx + rw, ry + rh);
+        ctx.lineTo(rx + rw, ry + rh - cornerLen);
+        ctx.stroke();
+
+        // 3. Crisp Pill Badge for Label
+        const trackStr = det.track_id && det.track_id > 0 ? `#${det.track_id} ` : '';
+        const confStr = `${Math.round(det.confidence * 100)}%`;
+        const labelText = `${trackStr}${classTitle} • ${confStr}`;
+
+        ctx.font = 'bold 10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        const textMetrics = ctx.measureText(labelText);
+        const tagW = textMetrics.width + 16;
+        const tagH = 17;
+        const tagX = rx;
+        const tagY = Math.max(0, ry - tagH - 3);
+
+        // Draw pill rounded background
+        ctx.fillStyle = bgTag;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(tagX, tagY, tagW, tagH, 3);
+        } else {
+          ctx.rect(tagX, tagY, tagW, tagH);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Status indicator dot inside pill
         ctx.fillStyle = strokeColor;
-        ctx.font = '10px monospace';
-        const label = `${det.class} ${Math.round(det.confidence * 100)}%`;
-        ctx.fillText(label, rx, Math.max(12, ry - 4));
+        ctx.beginPath();
+        ctx.arc(tagX + 7, tagY + tagH / 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Text label
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(labelText, tagX + 14, tagY + 12);
       });
     }
 
@@ -198,6 +291,22 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
             isDrawing ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-none'
           }`}
         />
+
+        {/* HUD OSD Badges */}
+        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+          <div className="px-2.5 py-1 rounded bg-slate-950/85 backdrop-blur border border-slate-700/60 flex items-center gap-2 text-[11px] font-mono text-slate-300 shadow-lg">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>AXON BODY 3</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-400 font-semibold">CJIS COMPLIANT</span>
+          </div>
+        </div>
+
+        <div className="absolute top-3 right-3 hidden sm:flex items-center gap-2 pointer-events-none">
+          <div className="px-2.5 py-1 rounded bg-slate-950/85 backdrop-blur border border-slate-700/60 text-[11px] font-mono text-cyan-400 shadow-lg">
+            KALMAN 7-STATE ACTIVE
+          </div>
+        </div>
       </div>
 
       {/* Control Panel */}

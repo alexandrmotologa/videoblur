@@ -91,7 +91,7 @@ func RunRedactionPipeline(opts PipelineOptions) (*PipelineSummary, error) {
 			)
 
 			asr := audio.NewWhisperASR(cfg.Audio.WhisperModelPath)
-			words, fullText, err := asr.TranscribeAudio(rawWavPath)
+			words, fullText, err := asr.TranscribeAudio(rawWavPath, opts.InputPath)
 			if err == nil {
 				audioEntities = aligner.FindPIIEntities(words, fullText)
 			}

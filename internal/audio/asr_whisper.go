@@ -40,11 +40,15 @@ type WhisperOutput struct {
 }
 
 // TranscribeAudio extracts speech and timestamped words from an audio or video file.
-func (wa *WhisperASR) TranscribeAudio(mediaPath string) ([]TranscriptWord, string, error) {
-	// 1. Check for sidecar transcript files (.json, .srt) with identical basename
-	sidecarWords, sidecarText, err := wa.trySidecarTranscript(mediaPath)
-	if err == nil && len(sidecarWords) > 0 {
-		return sidecarWords, sidecarText, nil
+func (wa *WhisperASR) TranscribeAudio(mediaPath string, sourcePaths ...string) ([]TranscriptWord, string, error) {
+	// 1. Check for sidecar transcript files (.json, .srt) with identical basename near mediaPath or sourcePaths
+	for _, p := range append([]string{mediaPath}, sourcePaths...) {
+		if p != "" {
+			sidecarWords, sidecarText, err := wa.trySidecarTranscript(p)
+			if err == nil && len(sidecarWords) > 0 {
+				return sidecarWords, sidecarText, nil
+			}
+		}
 	}
 
 	// 2. Check if whisper CLI is available

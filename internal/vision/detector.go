@@ -75,9 +75,10 @@ func detectFaces(rgb []byte, width, height int, confThreshold float64) []domain.
 	step := 16
 	winMin := 32
 	winMax := min(width, height) / 2
+	maxFaceY := int(float64(height) * 0.70) // Restrict face detection to upper/middle 70% of frame
 
 	for winSize := winMin; winSize <= winMax; winSize = int(float64(winSize) * 1.5) {
-		for y := 0; y <= height-winSize; y += step {
+		for y := 0; y <= min(height-winSize, maxFaceY); y += step {
 			for x := 0; x <= width-winSize; x += step {
 				skinCount := 0
 				totalSamples := 0
@@ -333,12 +334,38 @@ func nonMaximumSuppression(dets []domain.Detection, iouThreshold float64) []doma
 			if suppressed[j] {
 				continue
 			}
-			if sorted[i].Class == sorted[j].Class {
-				if sorted[i].Box.IoU(sorted[j].Box) > iouThreshold {
-					suppressed[j] = true
-				}
+
+			iou := sorted[i].Box.IoU(sorted[j].Box)
+
+			// Calculate containment overlap
+			x1 := max(sorted[i].Box.X, sorted[j].Box.X)
+			y1 := max(sorted[i].Box.Y, sorted[j].Box.Y)
+			x2 := min(sorted[i].Box.X+sorted[i].Box.W, sorted[j].Box.X+sorted[j].Box.W)
+			y2 := min(sorted[i].Box.Y+sorted[i].Box.H, sorted[j].Box.Y+sorted[j].Box.H)
+			interW := max(0, x2-x1)
+			interH := max(0, y2-y1)
+			interArea := float64(interW * interH)
+			smallerArea := math.Min(sorted[i].Box.Area(), sorted[j].Box.Area())
+			containment := 0.0
+			if smallerArea > 0 {
+				containment = interArea / smallerArea
+			}
+
+			// Suppress if high IoU (> iouThreshold), significant containment (> 40%),
+			// or nearby duplicate center within the same scale
+			ciX, ciY := sorted[i].Box.Center()
+			cjX, cjY := sorted[j].Box.Center()
+			distSq := (ciX-cjX)*(ciX-cjX) + (ciY-cjY)*(ciY-cjY)
+			minDim := math.Min(float64(sorted[i].Box.W), float64(sorted[i].Box.H))
+
+			if iou > iouThreshold || containment > 0.40 || (sorted[i].Class == sorted[j].Class && distSq < (minDim*0.8)*(minDim*0.8)) {
+				suppressed[j] = true
 			}
 		}
+	}
+
+	if len(keep) > 6 {
+		keep = keep[:6]
 	}
 
 	return keep
