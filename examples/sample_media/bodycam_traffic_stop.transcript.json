@@ -1,0 +1,35 @@
+{
+  "text": "Officer John Doe arrived at 123 Main Street with license plate 7XYZ890 and contact phone 555-0199.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "text": "Officer John Doe arrived at 123 Main Street",
+      "words": [
+        { "word": "Officer", "start_ms": 100, "end_ms": 400, "confidence": 0.99 },
+        { "word": "John", "start_ms": 420, "end_ms": 700, "confidence": 0.98 },
+        { "word": "Doe", "start_ms": 720, "end_ms": 950, "confidence": 0.99 },
+        { "word": "arrived", "start_ms": 980, "end_ms": 1350, "confidence": 0.95 },
+        { "word": "at", "start_ms": 1370, "end_ms": 1480, "confidence": 0.99 },
+        { "word": "123", "start_ms": 1500, "end_ms": 1800, "confidence": 0.98 },
+        { "word": "Main", "start_ms": 1820, "end_ms": 2100, "confidence": 0.97 },
+        { "word": "Street", "start_ms": 2120, "end_ms": 2500, "confidence": 0.99 }
+      ]
+    },
+    {
+      "start": 2.5,
+      "end": 5.0,
+      "text": "with license plate 7XYZ890 and contact phone 555-0199.",
+      "words": [
+        { "word": "with", "start_ms": 2550, "end_ms": 2750, "confidence": 0.99 },
+        { "word": "license", "start_ms": 2770, "end_ms": 3100, "confidence": 0.98 },
+        { "word": "plate", "start_ms": 3120, "end_ms": 3400, "confidence": 0.99 },
+        { "word": "7XYZ890", "start_ms": 3420, "end_ms": 3950, "confidence": 0.96 },
+        { "word": "and", "start_ms": 3970, "end_ms": 4100, "confidence": 0.99 },
+        { "word": "contact", "start_ms": 4120, "end_ms": 4400, "confidence": 0.98 },
+        { "word": "phone", "start_ms": 4420, "end_ms": 4650, "confidence": 0.99 },
+        { "word": "555-0199.", "start_ms": 4670, "end_ms": 5000, "confidence": 0.99 }
+      ]
+    }
+  ]
+}

@@ -138,13 +138,13 @@ export const ReviewPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center font-mono font-bold text-white text-sm">
+          <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center font-mono font-bold text-white text-sm shrink-0">
             VB
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-sm font-semibold tracking-tight text-white">videoblur Studio</h1>
               <span className="text-[11px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono border border-blue-500/20">
                 React 19
@@ -160,10 +160,10 @@ export const ReviewPage: React.FC = () => {
         <ExportActions manifest={manifest} />
       </header>
 
-      {/* Main Grid Workspace */}
-      <main className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
-        {/* Left: Video Player (8 cols) */}
-        <section className="col-span-8 flex flex-col border-r border-slate-800 bg-slate-950 p-6 overflow-y-auto">
+      {/* Main Responsive Layout: Stacks vertically on mobile/tablet, 2-column grid on desktop (lg) */}
+      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-0 overflow-y-auto lg:overflow-hidden">
+        {/* Left: Video Player (full width on mobile, 8 cols on desktop) */}
+        <section className="w-full lg:col-span-8 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-950 p-4 sm:p-6 overflow-y-auto">
           <VideoTimelinePlayer
             manifest={manifest}
             activeFilters={activeFilters}
@@ -172,8 +172,8 @@ export const ReviewPage: React.FC = () => {
           />
         </section>
 
-        {/* Right: Controls & Certificate (4 cols) */}
-        <aside className="col-span-4 bg-slate-900/60 p-6 flex flex-col gap-5 overflow-y-auto">
+        {/* Right: Controls & Certificate (full width on mobile, 4 cols on desktop) */}
+        <aside className="w-full lg:col-span-4 bg-slate-900/60 p-4 sm:p-6 flex flex-col gap-5 overflow-y-auto">
           <OverridesManager
             overrides={overrides}
             onAddBoxPrompt={() => setIsDrawing(true)}

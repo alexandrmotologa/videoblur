@@ -1,0 +1,32 @@
+{
+  "text": "Patient Jane Roe consulted Dr. Smith regarding medical record 98765 and phone 555-0144.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.0,
+      "text": "Patient Jane Roe consulted Dr. Smith",
+      "words": [
+        { "word": "Patient", "start_ms": 100, "end_ms": 350, "confidence": 0.99 },
+        { "word": "Jane", "start_ms": 370, "end_ms": 600, "confidence": 0.98 },
+        { "word": "Roe", "start_ms": 620, "end_ms": 850, "confidence": 0.99 },
+        { "word": "consulted", "start_ms": 870, "end_ms": 1200, "confidence": 0.95 },
+        { "word": "Dr.", "start_ms": 1220, "end_ms": 1500, "confidence": 0.99 },
+        { "word": "Smith", "start_ms": 1520, "end_ms": 1900, "confidence": 0.98 }
+      ]
+    },
+    {
+      "start": 2.0,
+      "end": 4.0,
+      "text": "regarding medical record 98765 and phone 555-0144.",
+      "words": [
+        { "word": "regarding", "start_ms": 2000, "end_ms": 2300, "confidence": 0.97 },
+        { "word": "medical", "start_ms": 2320, "end_ms": 2600, "confidence": 0.98 },
+        { "word": "record", "start_ms": 2620, "end_ms": 2900, "confidence": 0.98 },
+        { "word": "98765", "start_ms": 2920, "end_ms": 3300, "confidence": 0.99 },
+        { "word": "and", "start_ms": 3320, "end_ms": 3450, "confidence": 0.99 },
+        { "word": "phone", "start_ms": 3470, "end_ms": 3650, "confidence": 0.99 },
+        { "word": "555-0144.", "start_ms": 3670, "end_ms": 4000, "confidence": 0.99 }
+      ]
+    }
+  ]
+}

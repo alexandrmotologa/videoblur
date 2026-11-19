@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/alexandrmotologa/videoblur/internal/domain"
@@ -39,7 +41,13 @@ type WhisperOutput struct {
 
 // TranscribeAudio extracts speech and timestamped words from an audio or video file.
 func (wa *WhisperASR) TranscribeAudio(mediaPath string) ([]TranscriptWord, string, error) {
-	// Check if whisper CLI is available
+	// 1. Check for sidecar transcript files (.json, .srt) with identical basename
+	sidecarWords, sidecarText, err := wa.trySidecarTranscript(mediaPath)
+	if err == nil && len(sidecarWords) > 0 {
+		return sidecarWords, sidecarText, nil
+	}
+
+	// 2. Check if whisper CLI is available
 	if whisperBin, err := exec.LookPath("whisper"); err == nil {
 		words, fullText, err := wa.runWhisperCLI(whisperBin, mediaPath)
 		if err == nil && len(words) > 0 {
@@ -47,7 +55,7 @@ func (wa *WhisperASR) TranscribeAudio(mediaPath string) ([]TranscriptWord, strin
 		}
 	}
 
-	// Check if whisper-cpp or main is available
+	// 3. Check if whisper-cli or whisper-cpp is available
 	if whisperCppBin, err := exec.LookPath("whisper-cli"); err == nil {
 		words, fullText, err := wa.runWhisperCpp(whisperCppBin, mediaPath)
 		if err == nil && len(words) > 0 {
@@ -55,14 +63,64 @@ func (wa *WhisperASR) TranscribeAudio(mediaPath string) ([]TranscriptWord, strin
 		}
 	}
 
-	// Check if FFmpeg can transcribe via its whisper filter
-	words, fullText, err := wa.runFFmpegWhisperFilter(mediaPath)
-	if err == nil && len(words) > 0 {
-		return words, fullText, nil
+	// 4. Check if FFmpeg can transcribe via its whisper filter
+	if wa.modelPath != "" {
+		words, fullText, err := wa.runFFmpegWhisperFilter(mediaPath)
+		if err == nil && len(words) > 0 {
+			return words, fullText, nil
+		}
 	}
 
-	// If no external model weights are installed, run heuristic speech-interval transcription
-	return wa.runHeuristicSpeechAligner(mediaPath)
+	// 5. Fall back to real acoustic Voice Activity Detection (VAD) computed directly from the audio waveform
+	return wa.runAcousticEnergyVAD(mediaPath)
+}
+
+func (wa *WhisperASR) trySidecarTranscript(mediaPath string) ([]TranscriptWord, string, error) {
+	dir := filepath.Dir(mediaPath)
+	base := strings.TrimSuffix(filepath.Base(mediaPath), filepath.Ext(mediaPath))
+
+	// Look for <basename>.transcript.json or <basename>.json
+	candidates := []string{
+		filepath.Join(dir, base+".transcript.json"),
+		filepath.Join(dir, base+".json"),
+	}
+
+	for _, c := range candidates {
+		data, err := os.ReadFile(c)
+		if err != nil {
+			continue
+		}
+
+		var out WhisperOutput
+		if err := json.Unmarshal(data, &out); err == nil && (len(out.Segments) > 0 || len(out.Text) > 0) {
+			var words []TranscriptWord
+			for _, seg := range out.Segments {
+				if len(seg.Words) > 0 {
+					words = append(words, seg.Words...)
+				} else {
+					// Fallback: tokenize segment text evenly across time interval
+					tokens := strings.Fields(seg.Text)
+					if len(tokens) > 0 {
+						segDur := seg.End - seg.Start
+						stepSec := segDur / float64(len(tokens))
+						for i, tok := range tokens {
+							wStart := int64((seg.Start + float64(i)*stepSec) * 1000.0)
+							wEnd := int64((seg.Start + float64(i+1)*stepSec) * 1000.0)
+							words = append(words, TranscriptWord{
+								Word:    tok,
+								StartMs: wStart,
+								EndMs:   wEnd,
+								Conf:    0.95,
+							})
+						}
+					}
+				}
+			}
+			return words, out.Text, nil
+		}
+	}
+
+	return nil, "", fmt.Errorf("no sidecar transcript")
 }
 
 func (wa *WhisperASR) runWhisperCLI(binPath, mediaPath string) ([]TranscriptWord, string, error) {
@@ -165,45 +223,79 @@ func (wa *WhisperASR) runFFmpegWhisperFilter(mediaPath string) ([]TranscriptWord
 	return words, out.Text, nil
 }
 
-// runHeuristicSpeechAligner extracts audio RMS energy from the stream to identify
-// active spoken voice activity detection (VAD) intervals and align candidate PII tokens.
-func (wa *WhisperASR) runHeuristicSpeechAligner(mediaPath string) ([]TranscriptWord, string, error) {
-	// Probe duration using ffprobe
-	cmd := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", mediaPath)
-	out, err := cmd.Output()
+// runAcousticEnergyVAD extracts genuine voice activity intervals by parsing FFmpeg silencedetect output.
+func (wa *WhisperASR) runAcousticEnergyVAD(mediaPath string) ([]TranscriptWord, string, error) {
+	// Run FFmpeg silencedetect filter: detects silence under -35dB lasting > 0.2s
+	cmd := exec.Command("ffmpeg", "-i", mediaPath, "-af", "silencedetect=noise=-35dB:d=0.2", "-f", "null", "-")
+	outBytes, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, "", fmt.Errorf("ffprobe duration check failed: %w", err)
+		return nil, "", fmt.Errorf("audio VAD failed: %w", err)
 	}
 
-	var durationSec float64
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%f", &durationSec)
-	if durationSec <= 0 {
-		durationSec = 1.0
+	output := string(outBytes)
+
+	// Parse total duration
+	durCmd := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", mediaPath)
+	durOut, err := durCmd.Output()
+	var totalDurationSec float64 = 5.0
+	if err == nil {
+		fmt.Sscanf(strings.TrimSpace(string(durOut)), "%f", &totalDurationSec)
 	}
 
-	// Produce synthetic transcript markers for test benches
-	var words []TranscriptWord
-	fullText := "Officer John Doe arrived at 123 Main Street with license plate 7XYZ890 and contact phone 555-0199."
+	// Regexes to extract silence start and silence end timestamps
+	silenceStartRe := regexp.MustCompile(`silence_start:\s*([0-9.]+)`)
+	silenceEndRe := regexp.MustCompile(`silence_end:\s*([0-9.]+)`)
 
-	tokens := strings.Fields(fullText)
-	totalWords := len(tokens)
-	stepMs := int64((durationSec * 1000.0) / float64(totalWords+1))
-	if stepMs < 100 {
-		stepMs = 100
+	starts := silenceStartRe.FindAllStringSubmatch(output, -1)
+	ends := silenceEndRe.FindAllStringSubmatch(output, -1)
+
+	type interval struct {
+		start float64
+		end   float64
 	}
 
-	for i, token := range tokens {
-		start := int64(i) * stepMs
-		end := start + stepMs - 20
-		words = append(words, TranscriptWord{
-			Word:    token,
-			StartMs: start,
-			EndMs:   end,
-			Conf:    0.95,
+	var silences []interval
+	for i := 0; i < len(starts) && i < len(ends); i++ {
+		sStart, _ := strconv.ParseFloat(starts[i][1], 64)
+		sEnd, _ := strconv.ParseFloat(ends[i][1], 64)
+		silences = append(silences, interval{start: sStart, end: sEnd})
+	}
+
+	// Invert silence intervals to compute actual acoustic speech intervals
+	var speechIntervals []interval
+	currentPos := 0.0
+
+	for _, sil := range silences {
+		if sil.start > currentPos+0.1 {
+			speechIntervals = append(speechIntervals, interval{
+				start: currentPos,
+				end:   sil.start,
+			})
+		}
+		currentPos = sil.end
+	}
+	if currentPos < totalDurationSec-0.1 {
+		speechIntervals = append(speechIntervals, interval{
+			start: currentPos,
+			end:   totalDurationSec,
 		})
 	}
 
-	return words, fullText, nil
+	var words []TranscriptWord
+	var textTokens []string
+
+	for idx, sp := range speechIntervals {
+		wordLabel := fmt.Sprintf("[speech_segment_%d]", idx+1)
+		textTokens = append(textTokens, wordLabel)
+		words = append(words, TranscriptWord{
+			Word:    wordLabel,
+			StartMs: int64(sp.start * 1000.0),
+			EndMs:   int64(sp.end * 1000.0),
+			Conf:    0.90,
+		})
+	}
+
+	return words, strings.Join(textTokens, " "), nil
 }
 
 // RedactAudioStream orchestrates Whisper ASR, PII extraction, and audio bleeping.

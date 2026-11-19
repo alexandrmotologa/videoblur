@@ -17,12 +17,12 @@ export const ExportActions: React.FC<ExportActionsProps> = ({ manifest }) => {
   };
 
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={downloadAuditJSON}
         disabled={!manifest}
-        className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition disabled:opacity-40"
+        className="px-2.5 sm:px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition disabled:opacity-40"
       >
         Audit JSON
       </button>
@@ -30,7 +30,7 @@ export const ExportActions: React.FC<ExportActionsProps> = ({ manifest }) => {
       <a
         href="/api/pdf"
         download="redaction_certificate.pdf"
-        className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
+        className="px-2.5 sm:px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
       >
         <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -41,7 +41,7 @@ export const ExportActions: React.FC<ExportActionsProps> = ({ manifest }) => {
       <a
         href="/api/video"
         download="redacted_video.mp4"
-        className="px-3.5 py-1.5 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5"
+        className="px-3 sm:px-3.5 py-1.5 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5"
       >
         Export Certified Video
       </a>

@@ -1,8 +1,16 @@
+<p align="center">
+  <img src="docs/images/logo.png?raw=true" alt="videoblur logo" width="130" style="border-radius: 24px;" />
+</p>
+
 # videoblur
 
 Autonomous multimodal video and audio redaction engine for legal discovery, law enforcement records, and healthcare compliance.
 
 videoblur eliminates manual keyframing and audio bleeping in legal video processing. It runs entirely offline without transmitting media to cloud services, meeting CJIS, HIPAA, and FOIA statutory requirements.
+
+<p align="center">
+  <img src="docs/images/videoblur_demo.gif?raw=true" alt="videoblur interactive scrubbing and real-time bounding box tracking" width="850" />
+</p>
 
 ## Key capabilities
 
@@ -11,9 +19,21 @@ videoblur eliminates manual keyframing and audio bleeping in legal video process
 - **Kalman temporal tracking**: 7-state Kalman filter bridges detection dropouts across up to 8 consecutive frames, preventing unblurred flicker during rapid motion.
 - **Acoustic modulation modes**: Supports 1 kHz sine tones, attenuated muting, ambient pink noise, and voice garbling, with independent stereo channel isolation (left, right, or all).
 - **Decoupled high-throughput pipeline**: Asynchronous 3-stage buffer ring achieves 90+ FPS on standard computing hardware.
-- **Human-in-the-loop review studio**: Local React 19 web console for timeline scrubbing, interactive drag-to-draw bounding box overrides, track exemptions, and live re-rendering.
+- **Human-in-the-loop review studio**: Local React 19 web console with responsive layout for desktop and mobile, interactive drag-to-draw bounding box overrides, track exemptions, and live re-rendering.
 - **Automated folder watchdog daemon**: Monitors intake directories for bodycam dock uploads and processes files through a concurrent worker queue.
-- **Cryptographic compliance manifest & court PDF**: Generates Ed25519-signed JSON audit manifests and official courtroom PDF certificates with cumulative SHA-256 frame hashes.
+- **Cryptographic compliance manifest and court PDF**: Generates Ed25519-signed JSON audit manifests and official courtroom PDF certificates with cumulative SHA-256 frame hashes.
+
+## Review Studio interface
+
+The web console provides frame-level inspection, manual bounding box corrections, track exemptions, and real-time verification across desktop and mobile devices:
+
+<p align="center">
+  <img src="docs/images/videoblur_studio_desktop.png?raw=true" alt="videoblur Review Studio on desktop display" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/images/videoblur_studio_mobile.png?raw=true" alt="videoblur Review Studio responsive view on mobile" width="380" />
+</p>
 
 ## Architecture
 
