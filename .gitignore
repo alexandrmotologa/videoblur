@@ -22,6 +22,7 @@ tmp/
 *.tmp
 examples/sample_media/redacted_*
 examples/sample_media/audit_*
+examples/sample_media/*.pdf
 
 # Node.js / Web build
 web/node_modules/

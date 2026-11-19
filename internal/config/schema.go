@@ -31,26 +31,46 @@ const (
 	AudioPIIAddress    AudioPIIClass = "physical_address"
 )
 
+// AudioCensorMode defines the acoustic modulation technique over spoken PII.
+type AudioCensorMode string
+
+const (
+	AudioModeTone      AudioCensorMode = "tone"       // 1 kHz pure sine tone
+	AudioModeMute      AudioCensorMode = "mute"       // Attenuated silence
+	AudioModePinkNoise AudioCensorMode = "pink_noise" // Gentle ambient acoustic noise
+	AudioModeGarble    AudioCensorMode = "garble"     // Time-reversed audio preserving ambient texture
+)
+
+// AudioChannelTarget specifies which stereo channels to redact.
+type AudioChannelTarget string
+
+const (
+	ChannelAll   AudioChannelTarget = "all"
+	ChannelLeft  AudioChannelTarget = "left"
+	ChannelRight AudioChannelTarget = "right"
+)
+
 // VisualConfig holds parameters for image frame processing.
 type VisualConfig struct {
-	EnabledClasses     []TargetClass `yaml:"enabled_classes" json:"enabled_classes"`
-	DefaultMode        RedactionMode `yaml:"default_mode" json:"default_mode"`
-	BlurSigma          float64       `yaml:"blur_sigma" json:"blur_sigma"`
-	MosaicBlockSize    int           `yaml:"mosaic_block_size" json:"mosaic_block_size"`
-	ConfidenceThreshold float64      `yaml:"confidence_threshold" json:"confidence_threshold"`
-	TrackingMaxMissed  int           `yaml:"tracking_max_missed" json:"tracking_max_missed"`
-	TrackingIoUMin     float64       `yaml:"tracking_iou_min" json:"tracking_iou_min"`
-	PaddingRatio       float64       `yaml:"padding_ratio" json:"padding_ratio"`
+	EnabledClasses      []TargetClass `yaml:"enabled_classes" json:"enabled_classes"`
+	DefaultMode         RedactionMode `yaml:"default_mode" json:"default_mode"`
+	BlurSigma           float64       `yaml:"blur_sigma" json:"blur_sigma"`
+	MosaicBlockSize     int           `yaml:"mosaic_block_size" json:"mosaic_block_size"`
+	ConfidenceThreshold float64       `yaml:"confidence_threshold" json:"confidence_threshold"`
+	TrackingMaxMissed   int           `yaml:"tracking_max_missed" json:"tracking_max_missed"`
+	TrackingIoUMin      float64       `yaml:"tracking_iou_min" json:"tracking_iou_min"`
+	PaddingRatio        float64       `yaml:"padding_ratio" json:"padding_ratio"`
 }
 
 // AudioConfig holds settings for spoken entity masking.
 type AudioConfig struct {
-	EnabledClasses  []AudioPIIClass `yaml:"enabled_classes" json:"enabled_classes"`
-	WhisperModelPath string          `yaml:"whisper_model_path" json:"whisper_model_path"`
-	BleepFrequencyHz float64         `yaml:"bleep_frequency_hz" json:"bleep_frequency_hz"`
-	BleepVolume      float64         `yaml:"bleep_volume" json:"bleep_volume"`
-	MuteOnly         bool            `yaml:"mute_only" json:"mute_only"`
-	CrossfadeMs      int             `yaml:"crossfade_ms" json:"crossfade_ms"`
+	EnabledClasses   []AudioPIIClass    `yaml:"enabled_classes" json:"enabled_classes"`
+	CensorMode       AudioCensorMode    `yaml:"censor_mode" json:"censor_mode"`
+	TargetChannel    AudioChannelTarget `yaml:"target_channel" json:"target_channel"`
+	WhisperModelPath string             `yaml:"whisper_model_path" json:"whisper_model_path"`
+	BleepFrequencyHz float64            `yaml:"bleep_frequency_hz" json:"bleep_frequency_hz"`
+	BleepVolume      float64            `yaml:"bleep_volume" json:"bleep_volume"`
+	CrossfadeMs      int                `yaml:"crossfade_ms" json:"crossfade_ms"`
 }
 
 // ComplianceConfig specifies regulatory presets and digital signing rules.
@@ -64,10 +84,10 @@ type ComplianceConfig struct {
 
 // OutputConfig governs video encoding parameters.
 type OutputConfig struct {
-	VideoCodec   string `yaml:"video_codec" json:"video_codec"`     // e.g. "libx264", "h264_nvenc"
-	AudioCodec   string `yaml:"audio_codec" json:"audio_codec"`     // e.g. "aac"
-	CRF          int    `yaml:"crf" json:"crf"`                     // Constant Rate Factor
-	Preset       string `yaml:"preset" json:"preset"`               // "fast", "medium", "slow"
+	VideoCodec    string `yaml:"video_codec" json:"video_codec"`     // e.g. "libx264", "h264_nvenc"
+	AudioCodec    string `yaml:"audio_codec" json:"audio_codec"`     // e.g. "aac"
+	CRF           int    `yaml:"crf" json:"crf"`                     // Constant Rate Factor
+	Preset        string `yaml:"preset" json:"preset"`               // "fast", "medium", "slow"
 	HardwareAccel string `yaml:"hardware_accel" json:"hardware_accel"` // "auto", "cuda", "qsv", "none"
 }
 

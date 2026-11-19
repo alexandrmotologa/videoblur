@@ -88,16 +88,10 @@ func TestPIIAlignerExtraction(t *testing.T) {
 	}
 }
 
-func TestAudioBleeperPCMModulation(t *testing.T) {
+func TestAudioBleeperAcousticModes(t *testing.T) {
 	sampleRate := 16000
 	channels := 1
-	durationSec := 1.0
-	numSamples := int(float64(sampleRate) * durationSec)
-
-	// Create 1 second of silence
-	pcm := make([]byte, numSamples*2)
-
-	bleeper := NewAudioBleeper(1000.0, 0.8, false, 20)
+	numSamples := sampleRate // 1 second
 	entities := []domain.AudioEntity{
 		{
 			Class:   config.AudioPIISSN,
@@ -106,20 +100,57 @@ func TestAudioBleeperPCMModulation(t *testing.T) {
 		},
 	}
 
-	bleeper.ProcessPCM16(pcm, sampleRate, channels, entities)
+	// 1. Tone mode test
+	pcmTone := make([]byte, numSamples*2)
+	bleeperTone := NewAudioBleeper(config.AudioModeTone, config.ChannelAll, 1000.0, 0.8, 20)
+	bleeperTone.ProcessPCM16(pcmTone, sampleRate, channels, entities)
 
-	// Sample at 400.25 ms (quarter wave of 1kHz tone = peak of sine)
-	// 400.25ms * 16 samples/ms = 6404
 	peakSample := int(float64(sampleRate) * 0.40025)
-	val := int16(binary.LittleEndian.Uint16(pcm[peakSample*2 : peakSample*2+2]))
-	if math.Abs(float64(val)) < 5000 {
-		t.Errorf("Expected peak bleep tone at quarter-cycle, got %d", val)
+	valTone := int16(binary.LittleEndian.Uint16(pcmTone[peakSample*2 : peakSample*2+2]))
+	if math.Abs(float64(valTone)) < 5000 {
+		t.Errorf("Expected peak bleep tone, got %d", valTone)
 	}
 
-	// Verify sample before bleep remains untouched (0)
-	beforeSample := int(float64(sampleRate) * 0.050)
-	valBefore := int16(binary.LittleEndian.Uint16(pcm[beforeSample*2 : beforeSample*2+2]))
-	if valBefore != 0 {
-		t.Errorf("Sample before bleep was altered: %d", valBefore)
+	// 2. Mute mode test
+	pcmMute := make([]byte, numSamples*2)
+	for i := range pcmMute {
+		pcmMute[i] = 120 // fill with audio noise
+	}
+	bleeperMute := NewAudioBleeper(config.AudioModeMute, config.ChannelAll, 1000.0, 0.8, 20)
+	bleeperMute.ProcessPCM16(pcmMute, sampleRate, channels, entities)
+
+	valMute := int16(binary.LittleEndian.Uint16(pcmMute[peakSample*2 : peakSample*2+2]))
+	if valMute != 0 {
+		t.Errorf("Expected 0 in mute mode, got %d", valMute)
+	}
+
+	// 3. Pink Noise mode test
+	pcmPink := make([]byte, numSamples*2)
+	bleeperPink := NewAudioBleeper(config.AudioModePinkNoise, config.ChannelAll, 1000.0, 0.8, 20)
+	bleeperPink.ProcessPCM16(pcmPink, sampleRate, channels, entities)
+
+	valPink := int16(binary.LittleEndian.Uint16(pcmPink[peakSample*2 : peakSample*2+2]))
+	if valPink == 0 {
+		t.Errorf("Expected stochastic non-zero pink noise, got 0")
+	}
+
+	// 4. Stereo channel isolation test
+	stereoSamples := sampleRate * 2 * 2 // 1 sec, 2 channels, 2 bytes/sample
+	pcmStereo := make([]byte, stereoSamples)
+	bleeperLeftOnly := NewAudioBleeper(config.AudioModeTone, config.ChannelLeft, 1000.0, 0.8, 20)
+	bleeperLeftOnly.ProcessPCM16(pcmStereo, sampleRate, 2, entities)
+
+	// Left channel (ch 0) should have tone
+	leftSampleOffset := peakSample*4 + 0
+	valLeft := int16(binary.LittleEndian.Uint16(pcmStereo[leftSampleOffset : leftSampleOffset+2]))
+	if math.Abs(float64(valLeft)) < 5000 {
+		t.Errorf("Expected tone on Left channel, got %d", valLeft)
+	}
+
+	// Right channel (ch 1) should remain untouched (0)
+	rightSampleOffset := peakSample*4 + 2
+	valRight := int16(binary.LittleEndian.Uint16(pcmStereo[rightSampleOffset : rightSampleOffset+2]))
+	if valRight != 0 {
+		t.Errorf("Expected 0 on Right channel when targeting Left only, got %d", valRight)
 	}
 }

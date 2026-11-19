@@ -34,10 +34,11 @@ func DefaultConfig() *Config {
 				AudioPIICreditCard,
 				AudioPIIAddress,
 			},
+			CensorMode:       AudioModeTone,
+			TargetChannel:    ChannelAll,
 			WhisperModelPath: "",
 			BleepFrequencyHz: 1000.0,
 			BleepVolume:      0.75,
-			MuteOnly:         false,
 			CrossfadeMs:      20,
 		},
 		Compliance: ComplianceConfig{

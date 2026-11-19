@@ -1,18 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/alexandrmotologa/videoblur/internal/audit"
 	"github.com/alexandrmotologa/videoblur/internal/config"
+	"github.com/alexandrmotologa/videoblur/internal/domain"
 	"github.com/alexandrmotologa/videoblur/internal/media"
 	"github.com/alexandrmotologa/videoblur/internal/server"
 	"github.com/alexandrmotologa/videoblur/internal/vision"
+	"github.com/alexandrmotologa/videoblur/internal/watch"
 )
 
 var (
@@ -36,6 +42,7 @@ using Whisper ASR, and outputs a cryptographically signed compliance manifest.`,
 	rootCmd.AddCommand(newScanCmd())
 	rootCmd.AddCommand(newCertifyCmd())
 	rootCmd.AddCommand(newStudioCmd())
+	rootCmd.AddCommand(newWatchCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -72,6 +79,7 @@ func newRedactCmd() *cobra.Command {
 		auditor    string
 		privKey    string
 		pubKey     string
+		pdfPath    string
 	)
 
 	cmd := &cobra.Command{
@@ -147,6 +155,12 @@ func newRedactCmd() *cobra.Command {
 				return err
 			}
 
+			if pdfPath != "" {
+				if err := audit.GenerateCourtCertificatePDF(summary.Manifest, pdfPath); err == nil {
+					fmt.Printf("Courtroom PDF certificate generated: %s\n", pdfPath)
+				}
+			}
+
 			fmt.Println("\nRedaction complete.")
 			fmt.Printf("Frames processed: %d (%.2f seconds footage)\n", summary.TotalFrames, summary.DurationSec)
 			fmt.Printf("Elapsed: %.2fs (Average throughput: %.1f FPS)\n", summary.ProcessingTimeSec, summary.EffectiveFPS)
@@ -170,6 +184,8 @@ func newRedactCmd() *cobra.Command {
 	cmd.Flags().StringVar(&auditor, "auditor", "videoblur-autonomous-agent", "Auditor identity name")
 	cmd.Flags().StringVar(&privKey, "privkey", "", "Optional private key path for signing")
 	cmd.Flags().StringVar(&pubKey, "pubkey", "", "Optional public key path for signing")
+
+	cmd.Flags().StringVar(&pdfPath, "pdf", "", "Optional path to export a formal court PDF certificate")
 
 	return cmd
 }
@@ -242,11 +258,15 @@ func newScanCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&inputPath, "input", "i", "", "Input video path")
+
 	return cmd
 }
 
 func newCertifyCmd() *cobra.Command {
-	var manifestPath string
+	var (
+		manifestPath string
+		pdfPath      string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "certify",
@@ -264,6 +284,18 @@ func newCertifyCmd() *cobra.Command {
 			out, _ := json.MarshalIndent(res, "", "  ")
 			fmt.Println(string(out))
 
+			if pdfPath != "" {
+				data, err := os.ReadFile(manifestPath)
+				if err == nil {
+					var m domain.AuditManifest
+					if err := json.Unmarshal(data, &m); err == nil {
+						if err := audit.GenerateCourtCertificatePDF(&m, pdfPath); err == nil {
+							fmt.Printf("Courtroom PDF certificate generated: %s\n", pdfPath)
+						}
+					}
+				}
+			}
+
 			if res.IsValid && res.SignatureValid {
 				fmt.Println("\nVERDICT: [VALID] Cryptographic Non-Repudiation Verified.")
 				return nil
@@ -276,14 +308,17 @@ func newCertifyCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&manifestPath, "manifest", "m", "redaction_audit.json", "Path to audit manifest file")
+	cmd.Flags().StringVar(&pdfPath, "pdf", "", "Optional path to export a formal court PDF certificate")
+
 	return cmd
 }
 
 func newStudioCmd() *cobra.Command {
 	var (
-		port      int
-		videoPath string
-		auditPath string
+		port       int
+		videoPath  string
+		auditPath  string
+		sourcePath string
 	)
 
 	cmd := &cobra.Command{
@@ -291,7 +326,7 @@ func newStudioCmd() *cobra.Command {
 		Short: "Launch interactive embedded review studio",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := loadConfig()
-			srv := server.NewServer(port, videoPath, auditPath, cfg)
+			srv := server.NewServer(port, videoPath, auditPath, sourcePath, cfg)
 			return srv.Start()
 		},
 	}
@@ -299,6 +334,52 @@ func newStudioCmd() *cobra.Command {
 	cmd.Flags().IntVarP(&port, "port", "p", 8181, "Port to listen on")
 	cmd.Flags().StringVarP(&videoPath, "video", "v", "redacted.mp4", "Path to video file to review")
 	cmd.Flags().StringVarP(&auditPath, "audit", "a", "redaction_audit.json", "Path to audit manifest file")
+	cmd.Flags().StringVarP(&sourcePath, "source", "s", "", "Optional original source video path for re-render overrides")
+
+	return cmd
+}
+
+func newWatchCmd() *cobra.Command {
+	var (
+		inboxDir    string
+		outboxDir   string
+		archiveDir  string
+		concurrency int
+		generatePDF bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "watch",
+		Short: "Run automated watchdog daemon for intake folder monitoring",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := loadConfig()
+
+			w, err := watch.NewWatcher(watch.WatcherOptions{
+				InboxDir:     inboxDir,
+				OutboxDir:    outboxDir,
+				ArchiveDir:   archiveDir,
+				Concurrency:  concurrency,
+				PollInterval: 2 * time.Second,
+				Config:       cfg,
+				GeneratePDF:  generatePDF,
+			})
+			if err != nil {
+				return err
+			}
+
+			// Capture OS signals for graceful shutdown
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
+			return w.Start(ctx)
+		},
+	}
+
+	cmd.Flags().StringVar(&inboxDir, "inbox", "./inbox", "Folder path to monitor for incoming media files")
+	cmd.Flags().StringVar(&outboxDir, "outbox", "./outbox", "Folder path for redacted video, audit manifests, and PDFs")
+	cmd.Flags().StringVar(&archiveDir, "archive", "", "Optional folder path to move processed source media")
+	cmd.Flags().IntVar(&concurrency, "concurrency", 2, "Number of concurrent worker pipelines")
+	cmd.Flags().BoolVar(&generatePDF, "pdf", true, "Generate formal legal PDF certificates")
 
 	return cmd
 }

@@ -20,6 +20,16 @@ export interface AudioEntity {
   confidence: number;
 }
 
+export interface ManualOverride {
+  id: string;
+  action: 'add' | 'exempt' | 'delete';
+  track_id?: number;
+  class: 'face' | 'license_plate' | 'computer_screen' | 'id_badge';
+  start_frame: number;
+  end_frame: number;
+  box: Rect;
+}
+
 export interface FrameRecord {
   frame_index: number;
   timestamp_sec: number;

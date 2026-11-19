@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { AuditManifest, Detection } from '../types';
+import { AuditManifest, Detection, Rect } from '../types';
 import { AudioWaveformView } from './AudioWaveformView';
 
 interface VideoTimelinePlayerProps {
@@ -10,17 +10,26 @@ interface VideoTimelinePlayerProps {
     screens: boolean;
     audio: boolean;
   };
+  isDrawing?: boolean;
+  onBoxDrawn?: (box: Rect, frame: number) => void;
 }
 
 export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
   manifest,
   activeFilters,
+  isDrawing = false,
+  onBoxDrawn,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  // Drawing state
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [currentDrag, setCurrentDrag] = useState<{ x: number; y: number } | null>(null);
 
   const fps = manifest?.fps || 30.0;
   const currentFrame = Math.floor(currentTime * fps);
@@ -51,11 +60,10 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
     setCurrentTime(newTime);
   };
 
-  // Draw bounding boxes on canvas for the current frame
+  // Canvas drawing: render detection overlays and manual drawing rect
   useEffect(() => {
     const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) return;
+    if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -67,10 +75,10 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
       (f) => Math.abs(f.timestamp_sec - currentTime) < 1.0 / fps
     );
 
-    if (sampleRecord && sampleRecord.detections) {
-      const scaleX = canvas.width / (manifest?.video_width || canvas.width);
-      const scaleY = canvas.height / (manifest?.video_height || canvas.height);
+    const scaleX = canvas.width / (manifest?.video_width || canvas.width);
+    const scaleY = canvas.height / (manifest?.video_height || canvas.height);
 
+    if (sampleRecord && sampleRecord.detections) {
       sampleRecord.detections.forEach((det: Detection) => {
         if (det.class === 'face' && !activeFilters.faces) return;
         if (det.class === 'license_plate' && !activeFilters.plates) return;
@@ -95,7 +103,63 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
         ctx.fillText(label, rx, Math.max(12, ry - 4));
       });
     }
-  }, [currentTime, manifest, activeFilters, fps]);
+
+    // Render interactive user drag box
+    if (isDrawing && isMouseDown && dragStart && currentDrag) {
+      const x = Math.min(dragStart.x, currentDrag.x);
+      const y = Math.min(dragStart.y, currentDrag.y);
+      const w = Math.abs(currentDrag.x - dragStart.x);
+      const h = Math.abs(currentDrag.y - dragStart.y);
+
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.2)';
+      ctx.fillRect(x, y, w, h);
+      ctx.setLineDash([]);
+    }
+  }, [currentTime, manifest, activeFilters, fps, isDrawing, isMouseDown, dragStart, currentDrag]);
+
+  // Mouse event handlers for interactive drawing
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setIsMouseDown(true);
+    setDragStart({ x, y });
+    setCurrentDrag({ x, y });
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !isMouseDown) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setCurrentDrag({ x, y });
+  };
+
+  const handleCanvasMouseUp = () => {
+    if (!isDrawing || !isMouseDown || !dragStart || !currentDrag || !canvasRef.current) return;
+    setIsMouseDown(false);
+
+    const canvas = canvasRef.current;
+    const scaleX = (manifest?.video_width || canvas.width) / canvas.width;
+    const scaleY = (manifest?.video_height || canvas.height) / canvas.height;
+
+    const x = Math.round(Math.min(dragStart.x, currentDrag.x) * scaleX);
+    const y = Math.round(Math.min(dragStart.y, currentDrag.y) * scaleY);
+    const w = Math.round(Math.abs(currentDrag.x - dragStart.x) * scaleX);
+    const h = Math.round(Math.abs(currentDrag.y - dragStart.y) * scaleY);
+
+    if (w > 5 && h > 5 && onBoxDrawn) {
+      onBoxDrawn({ x, y, w, h }, currentFrame);
+    }
+
+    setDragStart(null);
+    setCurrentDrag(null);
+  };
 
   const formatTimecode = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -127,7 +191,12 @@ export const VideoTimelinePlayer: React.FC<VideoTimelinePlayerProps> = ({
         />
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 pointer-events-none w-full h-full"
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          className={`absolute inset-0 w-full h-full ${
+            isDrawing ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-none'
+          }`}
         />
       </div>
 

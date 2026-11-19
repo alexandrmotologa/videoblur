@@ -9,20 +9,22 @@ videoblur eliminates manual keyframing and audio bleeping in legal video process
 - **Zero-cloud execution**: Operates 100% locally on CPU or GPU via Go and FFmpeg. No data leaves the local machine.
 - **Visual multi-class detection**: Detects human faces, vehicle license plates, computer monitors, and ID badges.
 - **Kalman temporal tracking**: 7-state Kalman filter bridges detection dropouts across up to 8 consecutive frames, preventing unblurred flicker during rapid motion.
-- **Phoneme-aligned audio bleeping**: Transcribes spoken audio locally via Whisper, identifies sensitive personal entities, and injects 1 kHz sine waves with 20ms cosine cross-fade envelopes.
-- **Cryptographic compliance manifest**: Generates an Ed25519-signed JSON manifest with cumulative SHA-256 frame hashes for court chain-of-custody verification.
-- **Embedded review studio**: Includes a local React 19 web console for timeline scrubbing, bounding box inspection, and one-click export.
+- **Acoustic modulation modes**: Supports 1 kHz sine tones, attenuated muting, ambient pink noise, and voice garbling, with independent stereo channel isolation (left, right, or all).
+- **Decoupled high-throughput pipeline**: Asynchronous 3-stage buffer ring achieves 90+ FPS on standard computing hardware.
+- **Human-in-the-loop review studio**: Local React 19 web console for timeline scrubbing, interactive drag-to-draw bounding box overrides, track exemptions, and live re-rendering.
+- **Automated folder watchdog daemon**: Monitors intake directories for bodycam dock uploads and processes files through a concurrent worker queue.
+- **Cryptographic compliance manifest & court PDF**: Generates Ed25519-signed JSON audit manifests and official courtroom PDF certificates with cumulative SHA-256 frame hashes.
 
 ## Architecture
 
 ```
 Raw Media Input -> Demuxer -> Visual Detector + Kalman Tracker -> Blur / Mosaic / Blackout
-                           \-> Whisper ASR + PII Extractor     -> 1kHz Sine Wave Crossfade
+                           \-> Whisper ASR + PII Extractor     -> Tone / Mute / Pink Noise / Garble
                                                                          |
 Muxer Encoder <- Synchronized Video & Audio Stream <---------------------+
       |
       v
-redacted.mp4 + redaction_audit.json (Ed25519 Signed)
+redacted.mp4 + redaction_audit.json (Ed25519 Signed) + redaction_certificate.pdf
 ```
 
 ## Quick start
@@ -56,16 +58,30 @@ videoblur redact \
   -i input_footage.mp4 \
   -o redacted.mp4 \
   -a redaction_audit.json \
+  --pdf redaction_certificate.pdf \
   --mode gaussian \
   --standard CJIS
 ```
 
-Available modes:
+Available visual modes:
 - `gaussian`: Gaussian blur (configurable `--sigma`, default: 18.0)
 - `mosaic`: Pixelation blocks (configurable `--block-size`, default: 24)
 - `blackout`: Solid blackout rectangles for courtroom evidence
 
-#### 2. Scan footage without modifying
+#### 2. Run folder watchdog daemon
+
+Monitor an intake folder (such as a bodycam docking folder) and process files automatically:
+
+```bash
+videoblur watch \
+  --inbox ./incoming \
+  --outbox ./processed \
+  --archive ./archive \
+  --concurrency 4 \
+  --pdf
+```
+
+#### 3. Scan footage without modifying
 
 Perform a dry-run detection scan to identify all visual and audio entities with timestamps:
 
@@ -73,12 +89,12 @@ Perform a dry-run detection scan to identify all visual and audio entities with 
 videoblur scan -i input_footage.mp4
 ```
 
-#### 3. Verify cryptographic compliance certificate
+#### 4. Verify cryptographic compliance certificate
 
-Verify an existing audit manifest against its digital signature:
+Verify an existing audit manifest against its digital signature and export a PDF:
 
 ```bash
-videoblur certify -m redaction_audit.json
+videoblur certify -m redaction_audit.json --pdf verified_certificate.pdf
 ```
 
 Output:
@@ -89,20 +105,20 @@ Output:
   "signature_valid": true,
   "compliance_standard": "CJIS",
   "auditor_identity": "videoblur-autonomous-agent",
-  "total_frames": 150,
-  "total_redactions": 5671
+  "total_frames": 120,
+  "total_redactions": 3267
 }
 ```
 
-#### 4. Launch interactive review studio
+#### 5. Launch interactive review studio
 
 Start the embedded local review server:
 
 ```bash
-videoblur studio -p 8181 -v redacted.mp4 -a redaction_audit.json
+videoblur studio -p 8181 -v redacted.mp4 -a redaction_audit.json -s source.mp4
 ```
 
-Navigate to `http://127.0.0.1:8181` to inspect frames, scrub audio waveforms, and download certified exports.
+Navigate to `http://127.0.0.1:8181` to inspect frames, draw custom bounding boxes, exempt whitelisted tracks, scrub audio waveforms, and download certified exports.
 
 ## Configuration file
 
@@ -131,9 +147,10 @@ audio:
     - email_address
     - credit_card
     - physical_address
+  censor_mode: tone # options: tone, mute, pink_noise, garble
+  target_channel: all # options: all, left, right
   bleep_frequency_hz: 1000.0
   bleep_volume: 0.75
-  mute_only: false
   crossfade_ms: 20
 
 compliance:

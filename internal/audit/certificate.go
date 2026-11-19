@@ -26,6 +26,7 @@ type ManifestBuilder struct {
 	totalFrames     int
 	visualStats     domain.EntityStats
 	audioEntities   []domain.AudioEntity
+	manualOverrides []domain.ManualOverride
 	frameSamples    []domain.FrameRecord
 }
 
@@ -91,6 +92,11 @@ func (mb *ManifestBuilder) SetAudioEntities(entities []domain.AudioEntity) {
 	mb.audioEntities = entities
 }
 
+// SetManualOverrides registers human reviewer overrides.
+func (mb *ManifestBuilder) SetManualOverrides(overrides []domain.ManualOverride) {
+	mb.manualOverrides = overrides
+}
+
 // Build generates the immutable AuditManifest and applies cryptographic signing.
 func (mb *ManifestBuilder) Build() (*domain.AuditManifest, error) {
 	manifest := &domain.AuditManifest{
@@ -107,6 +113,7 @@ func (mb *ManifestBuilder) Build() (*domain.AuditManifest, error) {
 		FPS:             mb.fps,
 		VisualEntities:  mb.visualStats,
 		AudioEntities:   mb.audioEntities,
+		ManualOverrides: mb.manualOverrides,
 		TotalBleeps:     len(mb.audioEntities),
 		FrameHashRoot:   hex.EncodeToString(mb.cumulativeHash[:]),
 		FramesSample:    mb.frameSamples,

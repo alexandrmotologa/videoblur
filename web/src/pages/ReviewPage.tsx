@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { AuditManifest, VerificationResult } from '../types';
+import { AuditManifest, VerificationResult, ManualOverride, Rect } from '../types';
 import { VideoTimelinePlayer } from '../components/VideoTimelinePlayer';
 import { EntityFilterBar } from '../components/EntityFilterBar';
 import { CertificateBadge } from '../components/CertificateBadge';
 import { ExportActions } from '../components/ExportActions';
+import { OverridesManager } from '../components/OverridesManager';
 
 export const ReviewPage: React.FC = () => {
   const [manifest, setManifest] = useState<AuditManifest | null>(null);
   const [verification, setVerification] = useState<VerificationResult | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [overrides, setOverrides] = useState<ManualOverride[]>([]);
+  const [isReRendering, setIsReRendering] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+
   const [activeFilters, setActiveFilters] = useState({
     faces: true,
     plates: true,
@@ -16,7 +21,7 @@ export const ReviewPage: React.FC = () => {
     audio: true,
   });
 
-  useEffect(() => {
+  const loadAudit = () => {
     fetch('/api/audit')
       .then((res) => {
         if (res.ok) return res.json();
@@ -24,6 +29,20 @@ export const ReviewPage: React.FC = () => {
       })
       .then((data: AuditManifest) => setManifest(data))
       .catch((err) => console.warn('Could not load audit manifest:', err));
+  };
+
+  const loadOverrides = () => {
+    fetch('/api/overrides')
+      .then((res) => res.json())
+      .then((data: ManualOverride[]) => {
+        if (Array.isArray(data)) setOverrides(data);
+      })
+      .catch((err) => console.warn('Failed loading overrides:', err));
+  };
+
+  useEffect(() => {
+    loadAudit();
+    loadOverrides();
   }, []);
 
   const handleVerify = async () => {
@@ -41,6 +60,79 @@ export const ReviewPage: React.FC = () => {
 
   const handleToggleFilter = (key: 'faces' | 'plates' | 'screens' | 'audio') => {
     setActiveFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleBoxDrawn = (box: Rect, frame: number) => {
+    const newOv: ManualOverride = {
+      id: 'ov_' + Date.now(),
+      action: 'add',
+      class: 'face',
+      start_frame: Math.max(0, frame - 15),
+      end_frame: frame + 45, // cover a 2-second interval around the frame
+      box,
+    };
+    const updated = [...overrides, newOv];
+    setOverrides(updated);
+    setIsDrawing(false);
+
+    // Save to server
+    fetch('/api/overrides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(console.error);
+  };
+
+  const handleAddExemptTrack = (trackId: number) => {
+    const newOv: ManualOverride = {
+      id: 'ov_exempt_' + Date.now(),
+      action: 'exempt',
+      track_id: trackId,
+      class: 'face',
+      start_frame: 0,
+      end_frame: 0, // 0 means entire video duration
+      box: { x: 0, y: 0, w: 0, h: 0 },
+    };
+    const updated = [...overrides, newOv];
+    setOverrides(updated);
+    fetch('/api/overrides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(console.error);
+  };
+
+  const handleRemoveOverride = (id: string) => {
+    const updated = overrides.filter((o) => o.id !== id);
+    setOverrides(updated);
+    fetch('/api/overrides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(console.error);
+  };
+
+  const handleApplyReRender = async () => {
+    setIsReRendering(true);
+    try {
+      // 1. Save overrides
+      await fetch('/api/overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(overrides),
+      });
+
+      // 2. Trigger pipeline re-render
+      const res = await fetch('/api/re-render', { method: 'POST' });
+      if (res.ok) {
+        loadAudit();
+        setVerification(null);
+      }
+    } catch (err) {
+      console.error('Re-render error:', err);
+    } finally {
+      setIsReRendering(false);
+    }
   };
 
   return (
@@ -72,11 +164,27 @@ export const ReviewPage: React.FC = () => {
       <main className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
         {/* Left: Video Player (8 cols) */}
         <section className="col-span-8 flex flex-col border-r border-slate-800 bg-slate-950 p-6 overflow-y-auto">
-          <VideoTimelinePlayer manifest={manifest} activeFilters={activeFilters} />
+          <VideoTimelinePlayer
+            manifest={manifest}
+            activeFilters={activeFilters}
+            isDrawing={isDrawing}
+            onBoxDrawn={handleBoxDrawn}
+          />
         </section>
 
         {/* Right: Controls & Certificate (4 cols) */}
         <aside className="col-span-4 bg-slate-900/60 p-6 flex flex-col gap-5 overflow-y-auto">
+          <OverridesManager
+            overrides={overrides}
+            onAddBoxPrompt={() => setIsDrawing(true)}
+            onAddExemptTrack={handleAddExemptTrack}
+            onRemoveOverride={handleRemoveOverride}
+            onApplyReRender={handleApplyReRender}
+            isReRendering={isReRendering}
+            isDrawing={isDrawing}
+            onToggleDrawing={() => setIsDrawing(!isDrawing)}
+          />
+
           <EntityFilterBar
             visualStats={manifest?.visual_entities || { faces_detected: 0, license_plates_detected: 0, screens_detected: 0, id_badges_detected: 0 }}
             audioEntities={manifest?.audio_entities || []}

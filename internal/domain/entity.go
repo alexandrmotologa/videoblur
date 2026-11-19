@@ -83,6 +83,26 @@ type AudioEntity struct {
 	Confidence float64              `json:"confidence"`
 }
 
+// OverrideAction defines human officer review actions.
+type OverrideAction string
+
+const (
+	ActionAddBox OverrideAction = "add"
+	ActionExempt OverrideAction = "exempt"
+	ActionDelete OverrideAction = "delete"
+)
+
+// ManualOverride records an officer's manual bounding box edit or exemption.
+type ManualOverride struct {
+	ID         string             `json:"id"`
+	Action     OverrideAction     `json:"action"`
+	TrackID    int                `json:"track_id,omitempty"`
+	Class      config.TargetClass `json:"class"`
+	StartFrame int                `json:"start_frame"`
+	EndFrame   int                `json:"end_frame"`
+	Box        Rect               `json:"box"`
+}
+
 // FrameRecord stores verification details for a single video frame.
 type FrameRecord struct {
 	FrameIndex int         `json:"frame_index"`
@@ -110,9 +130,10 @@ type AuditManifest struct {
 	VideoWidth      int           `json:"video_width"`
 	VideoHeight     int           `json:"video_height"`
 	FPS             float64       `json:"fps"`
-	VisualEntities  EntityStats   `json:"visual_entities"`
-	AudioEntities   []AudioEntity `json:"audio_entities"`
-	TotalBleeps     int           `json:"total_bleeps"`
+	VisualEntities  EntityStats      `json:"visual_entities"`
+	AudioEntities   []AudioEntity    `json:"audio_entities"`
+	ManualOverrides []ManualOverride `json:"manual_overrides,omitempty"`
+	TotalBleeps     int              `json:"total_bleeps"`
 	FrameHashRoot   string        `json:"frame_hash_root"`
 	FramesSample    []FrameRecord `json:"sample_frames,omitempty"`
 	SignatureHex    string        `json:"signature_hex,omitempty"`
