@@ -1,0 +1,42 @@
+# videoblur Production Redaction Configuration
+# Target: Freedom of Information Act (FOIA), Police Bodycam, Hospital Video & Courtroom Subpoenas
+
+visual:
+  enabled_classes:
+    - face
+    - license_plate
+    - computer_screen
+    - id_badge
+  default_mode: gaussian # options: gaussian, mosaic, blackout
+  blur_sigma: 18.0       # Gaussian kernel dispersion
+  mosaic_block_size: 24  # Pixel block width for mosaic mode
+  confidence_threshold: 0.40
+  tracking_max_missed: 8 # Bridging frames: keeps blur active across brief occlusions/motion blur
+  tracking_iou_min: 0.25
+  padding_ratio: 0.12    # Expands bounding box by 12% to prevent edge feature leakage
+
+audio:
+  enabled_classes:
+    - person_name
+    - phone_number
+    - ssn_cnp
+    - email_address
+    - credit_card
+    - physical_address
+  whisper_model_path: "" # Local model file (optional; auto-detects system whisper or whisper.cpp)
+  bleep_frequency_hz: 1000.0
+  bleep_volume: 0.75
+  mute_only: false       # Set true to mute rather than emit 1kHz tone
+  crossfade_ms: 20       # 20ms cosine cross-fade envelope preventing acoustic clicks
+
+compliance:
+  standard: CJIS         # Regulatory framework: CJIS, HIPAA, FOIA, GDPR
+  auditor_identity: videoblur-autonomous-officer
+  sign_certificate: true # Signs SHA-256 frame hash root with Ed25519 digital key
+
+output:
+  video_codec: libx264   # Hardware encoders: h264_nvenc, h264_qsv, or libx264
+  audio_codec: aac
+  crf: 18                # Visually lossless rate factor
+  preset: fast
+  hardware_accel: auto

@@ -1,0 +1,46 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/videoblur
+
+# Test and coverage artifacts
+*.out
+*.test
+coverage.html
+profile.pprof
+
+# Output files
+redacted.mp4
+redaction_audit.json
+audit.json
+output/
+tmp/
+*.tmp
+examples/sample_media/redacted_*
+examples/sample_media/audit_*
+
+# Node.js / Web build
+web/node_modules/
+web/dist/
+web/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Models cache (downloaded or local large weights)
+models/*.onnx
+models/*.bin
+!models/.gitkeep
+
+# IDEs and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
